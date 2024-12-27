@@ -1,0 +1,258 @@
+<html><head><base href="https://api.pretrained.cloud/js">
+<title>5D Cellular Automata (3D + Color + Size) - Enhanced Dynamics</title>
+<style>
+  body { 
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+  }
+  #info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    font-family: monospace;
+    z-index: 100;
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<div id="info">5D Enhanced Cellular Automata<br>Click to pause/resume<br>Scroll to adjust dynamics</div>
+<script>
+const width = 15;
+const height = 15;
+const depth = 15;
+let paused = false;
+let dynamicsFactor = 0.1;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+camera.position.set(30, 30, 30);
+camera.lookAt(width/2, height/2, depth/2);
+
+const light = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(light);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(10, 10, 10);
+scene.add(directionalLight);
+
+class Cell5D {
+    constructor(alive = false) {
+        this.alive = alive;
+        this.size = 0.5 + Math.random() * 0.5;
+        this.hue = Math.random();
+        this.saturation = 0.8 + Math.random() * 0.2;
+        this.brightness = 0.4 + Math.random() * 0.3;
+        this.mesh = null;
+    }
+}
+
+let cells = new Array(width);
+for(let x = 0; x < width; x++) {
+    cells[x] = new Array(height);
+    for(let y = 0; y < height; y++) {
+        cells[x][y] = new Array(depth);
+        for(let z = 0; z < depth; z++) {
+            cells[x][y][z] = new Cell5D(Math.random() < 0.3);
+        }
+    }
+}
+
+const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+function createMesh(cell, x, y, z) {
+    const material = new THREE.MeshPhongMaterial({
+        color: new THREE.Color().setHSL(cell.hue, cell.saturation, cell.brightness)
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    mesh.scale.set(cell.size, cell.size, cell.size);
+    return mesh;
+}
+
+// Initialize meshes
+for(let x = 0; x < width; x++) {
+    for(let y = 0; y < height; y++) {
+        for(let z = 0; z < depth; z++) {
+            if(cells[x][y][z].alive) {
+                const mesh = createMesh(cells[x][y][z], x, y, z);
+                cells[x][y][z].mesh = mesh;
+                scene.add(mesh);
+            }
+        }
+    }
+}
+
+function getNeighborStats(x, y, z) {
+    let stats = {
+        count: 0,
+        avgSize: 0,
+        avgHue: 0,
+        avgSaturation: 0,
+        avgBrightness: 0,
+        totalAlive: 0,
+        minSize: Infinity,
+        maxSize: -Infinity,
+        sizeVariance: 0,
+        colorVariance: 0
+    };
+    
+    const neighbors = [];
+    
+    for(let dx = -1; dx <= 1; dx++) {
+        for(let dy = -1; dy <= 1; dy++) {
+            for(let dz = -1; dz <= 1; dz++) {
+                if(dx === 0 && dy === 0 && dz === 0) continue;
+                
+                const nx = (x + dx + width) % width;
+                const ny = (y + dy + height) % height;
+                const nz = (z + dz + depth) % depth;
+                
+                if(cells[nx][ny][nz].alive) {
+                    stats.count++;
+                    const cell = cells[nx][ny][nz];
+                    neighbors.push(cell);
+                    stats.avgSize += cell.size;
+                    stats.avgHue += cell.hue;
+                    stats.avgSaturation += cell.saturation;
+                    stats.avgBrightness += cell.brightness;
+                    stats.minSize = Math.min(stats.minSize, cell.size);
+                    stats.maxSize = Math.max(stats.maxSize, cell.size);
+                    stats.totalAlive++;
+                }
+            }
+        }
+    }
+    
+    if(stats.totalAlive > 0) {
+        stats.avgSize /= stats.totalAlive;
+        stats.avgHue /= stats.totalAlive;
+        stats.avgSaturation /= stats.totalAlive;
+        stats.avgBrightness /= stats.totalAlive;
+        
+        // Calculate variances
+        for(const cell of neighbors) {
+            stats.sizeVariance += Math.pow(cell.size - stats.avgSize, 2);
+            stats.colorVariance += Math.pow(cell.hue - stats.avgHue, 2);
+        }
+        stats.sizeVariance /= stats.totalAlive;
+        stats.colorVariance /= stats.totalAlive;
+    }
+    
+    return stats;
+}
+
+function update() {
+    const newCells = new Array(width);
+    for(let x = 0; x < width; x++) {
+        newCells[x] = new Array(height);
+        for(let y = 0; y < height; y++) {
+            newCells[x][y] = new Array(depth);
+            for(let z = 0; z < depth; z++) {
+                newCells[x][y][z] = new Cell5D();
+            }
+        }
+    }
+    
+    for(let x = 0; x < width; x++) {
+        for(let y = 0; y < height; y++) {
+            for(let z = 0; z < depth; z++) {
+                const neighborStats = getNeighborStats(x, y, z);
+                const currentCell = cells[x][y][z];
+                const newCell = newCells[x][y][z];
+                
+                // Enhanced life rules based on neighborhood stats
+                if(currentCell.alive) {
+                    newCell.alive = (neighborStats.count >= 4 && neighborStats.count <= 6) ||
+                                  (neighborStats.sizeVariance > 0.1 && neighborStats.count >= 3);
+                } else {
+                    newCell.alive = (neighborStats.count === 5) ||
+                                  (neighborStats.colorVariance > 0.2 && neighborStats.count === 4);
+                }
+                
+                if(newCell.alive) {
+                    // Enhanced size evolution
+                    const sizeInfluence = (neighborStats.maxSize - neighborStats.minSize) * dynamicsFactor;
+                    newCell.size = Math.max(0.2, Math.min(1.5,
+                        currentCell.alive ? currentCell.size : 1.0,
+                        currentCell.size + (neighborStats.avgSize - currentCell.size) * dynamicsFactor + sizeInfluence
+                    ));
+                    
+                    // Enhanced color evolution
+                    const hueDrift = Math.sin(Date.now() * 0.001) * 0.1;
+                    newCell.hue = currentCell.alive ? 
+                        (currentCell.hue + (neighborStats.avgHue - currentCell.hue) * dynamicsFactor + hueDrift) % 1.0 :
+                        (neighborStats.avgHue + hueDrift) % 1.0;
+                    
+                    newCell.saturation = Math.max(0.5, Math.min(1.0,
+                        currentCell.alive ? currentCell.saturation : 0.8,
+                        currentCell.saturation + (neighborStats.avgSaturation - currentCell.saturation) * dynamicsFactor
+                    ));
+                    
+                    const brightnessInfluence = Math.cos(Date.now() * 0.002) * 0.1;
+                    newCell.brightness = Math.max(0.3, Math.min(0.7,
+                        currentCell.alive ? currentCell.brightness : 0.5,
+                        currentCell.brightness + (neighborStats.avgBrightness - currentCell.brightness) * dynamicsFactor + brightnessInfluence
+                    ));
+                    
+                    if(!currentCell.mesh) {
+                        newCell.mesh = createMesh(newCell, x, y, z);
+                        scene.add(newCell.mesh);
+                    } else {
+                        newCell.mesh = currentCell.mesh;
+                        newCell.mesh.scale.set(newCell.size, newCell.size, newCell.size);
+                        newCell.mesh.material.color.setHSL(
+                            newCell.hue,
+                            newCell.saturation,
+                            newCell.brightness
+                        );
+                    }
+                } else if(currentCell.mesh) {
+                    scene.remove(currentCell.mesh);
+                    currentCell.mesh.geometry.dispose();
+                    currentCell.mesh.material.dispose();
+                }
+            }
+        }
+    }
+    
+    cells = newCells;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    
+    if(!paused) {
+        update();
+    }
+    
+    camera.position.x = 30 * Math.cos(Date.now() * 0.0003);
+    camera.position.z = 30 * Math.sin(Date.now() * 0.0003);
+    camera.lookAt(width/2, height/2, depth/2);
+    
+    renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+document.addEventListener('click', () => {
+    paused = !paused;
+});
+
+window.addEventListener('wheel', (event) => {
+    dynamicsFactor = Math.max(0.01, Math.min(0.3, dynamicsFactor + event.deltaY * 0.0001));
+});
+
+animate();
+</script>
+</body>
+</html>
